@@ -21,19 +21,21 @@ model = YOLO("yolov8n.pt")
 
 # DeepFace globals
 is_recognizing = False
+last_face_match_confidence = "N/A"
+last_face_match_name = "None"
 
 # Tracking dictionaries
-# tracked_persons: id -> {"name": "Unknown", "entry_log": bool, "last_seen": timestamp, "face_identified": bool, "bbox": (x1, y1, x2, y2)}
+# tracked_persons: id -> {"name": "Unknown", "entry_log": bool, "last_seen": timestamp, "face_identified": bool, "bbox": (x1, y1, x2, y2), "conf": float}
 tracked_persons = {}
 
-# tracked_objects: id -> {"cls_name": name, "linked_person": id, "positions": [(x,y)], "stationary": bool, "lost_alert_logged": bool, "last_seen": timestamp, "bbox": (x1, y1, x2, y2)}
+# tracked_objects: id -> {"cls_name": name, "linked_person": id, "positions": [(x,y)], "stationary": bool, "lost_alert_logged": bool, "last_seen": timestamp, "bbox": (x1, y1, x2, y2), "conf": float}
 tracked_objects = {}
 
 def get_distance(p1, p2):
     return math.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
 
 def recognize_face_task(face_image, track_id):
-    global is_recognizing
+    global is_recognizing, last_face_match_confidence, last_face_match_name
     try:
         temp_img_path = f"temp_roi_{track_id}.jpg"
         cv2.imwrite(temp_img_path, face_image)
@@ -42,6 +44,12 @@ def recognize_face_task(face_image, track_id):
         if len(dfs) > 0 and not dfs[0].empty:
             matched_path = dfs[0].iloc[0]['identity']
             recognized_name = os.path.splitext(os.path.basename(matched_path))[0].replace("_", " ")
+            
+            # Extract distance/confidence metric from DeepFace if available
+            distance_metric = dfs[0].iloc[0].get('VGG-Face_cosine', dfs[0].iloc[0].get('distance', 0.0))
+            last_face_match_confidence = f"{max(0, 100 - (distance_metric * 100)):.2f}%"
+            last_face_match_name = recognized_name
+
             if track_id in tracked_persons:
                 tracked_persons[track_id]["name"] = recognized_name
                 tracked_persons[track_id]["face_identified"] = True
@@ -67,6 +75,11 @@ DISAPPEAR_TIMEOUT = 2.0  # seconds until exit
 
 # COCO Classes of interest: 0: person, 24: backpack, 26: handbag, 28: suitcase, 39: bottle, 63: laptop, 67: cell phone
 TARGET_CLASSES = [0, 24, 26, 28, 39, 63, 67]
+
+# Variables to calculate rolling FPS
+frame_count = 0
+start_time = time.time()
+current_fps = 0
 
 while True:
     frame = vs.read()
@@ -189,10 +202,11 @@ while True:
                         
                 # Lost Object Logic
                 color = (255, 0, 0) # Default Blue for objects
-                status_text = f"ID:{track_id} {cls_name}"
                 if tr_obj["linked_person"] is not None:
                     p_name = tracked_persons[tr_obj["linked_person"]].get("name", "Unknown")
-                    status_text += f", carrier: {p_name}"
+                    status_text = f"{cls_name.title()} (Linked to: {p_name})"
+                else:
+                    status_text = f"ID:{track_id} {cls_name.title()}"
                     
                 # If object is stationary and its linked person is far or missing
                 if tr_obj["stationary"] and tr_obj["linked_person"] is not None:
