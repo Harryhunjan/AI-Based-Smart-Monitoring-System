@@ -32,8 +32,8 @@ It provides a sophisticated live-feed UI that tracks individuals, identifies kno
 ## 📂 Project Structure
 
 ```text
-Project/
-│── real_time_object_detection.py  # Main entry script for the live surveillance feed
+.
+├── real_time_object_detection.py  # Main entry script for the live surveillance feed
 │── deep_learning_object_detection.py # Standard deep learning object detection code
 │── face_preprocessing.py          # Preprocesses LFW dataset for facial recognition training
 │── check_db.py                    # Script to verify and manage the face database
@@ -58,14 +58,13 @@ Project/
 
 2. **Install dependencies:**
    ```bash
-   cd Project
    pip install -r requirements.txt
    pip install pandas matplotlib seaborn deepface ultralytics
    ```
    *(Ensure you have PyTorch installed with CUDA support if you intend to run inference on a GPU).*
 
 3. **Prepare the Face Database:**
-   * Add images of known individuals into the `Project/face_database/` directory. Create a subfolder for each person (e.g., `face_database/Harry/1.jpg`).
+   * Add images of known individuals into the `face_database/` directory. Create a subfolder for each person (e.g., `face_database/Harry/1.jpg`).
    * Run the DB check script to initialize embeddings:
      ```bash
      python check_db.py
@@ -78,7 +77,6 @@ Project/
 To launch the real-time smart surveillance dashboard using your webcam:
 
 ```bash
-cd Project
 python real_time_object_detection.py
 ```
 

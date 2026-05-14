@@ -44,10 +44,10 @@ lib64/
 # Videos and Stream Outputs (Excluding bulky binary test/output media)
 *.avi
 *.mp4
-Project/Video/output/
+Video/output/
 
 # Local application logs
-Project/logs/
+logs/
 *.log
 
 # ==============================================

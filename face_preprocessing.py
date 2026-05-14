@@ -1,4 +1,4 @@
-# cd "c:\Users\hargu\Desktop\Project-OBJECT DETECTION\Project"
+# cd "c:\Users\hargu\Desktop\Project-OBJECT DETECTION"
 # python face_preprocessing.py
 """
 Face Recognition Dataset Preprocessing

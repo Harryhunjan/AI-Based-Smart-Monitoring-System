@@ -5,7 +5,7 @@
 ### 📁 Project Structure (Recommended for Research Paper)
 
 ```
-Project/
+.
 ├── face_preprocessing.py          # ← RUN THIS FIRST
 ├── requirements.txt               # Python dependencies
 ├── dataset/                       # Output folder (created automatically)
