@@ -1,8 +1,86 @@
+# ==============================================
+# PYTHON ENVIRONMENT & BUILDS
+# ==============================================
+# Virtual Environments
 .venv/
 .venv - Copy/
-Project/.ipynb_checkpoints/
-Project/logs/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Python Cache and Bytecode
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# Build & Distribution Artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+eggs/
+lib/
+lib64/
+
+# ==============================================
+# PROJECT SPECIFIC ARTIFACTS
+# ==============================================
+# DeepFace & Face Recognition cache files
+*.pkl
+
+# Large Neural Network Models & Weights
 *.pt
+*.caffemodel
+*.pb
+*.h5
+*.onnx
+*.weights
+*.tflite
+
+# Videos and Stream Outputs (Excluding bulky binary test/output media)
+*.avi
+*.mp4
+Project/Video/output/
+
+# Local application logs
+Project/logs/
+*.log
+
+# ==============================================
+# SYSTEM & IDE CONFIGURATIONS
+# ==============================================
+# Operating System Files
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Editors and IDEs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.swo
+
+# Jupyter Notebook check-pointing
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# ==============================================
+# DATASETS & SENSITIVE DATA
+# ==============================================
+# Prevent raw images and personal training photos from bloating the repository.
+# Keep a backup of these locally but avoid public cloud storage.
 *.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
