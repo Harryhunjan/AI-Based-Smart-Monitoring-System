@@ -8,6 +8,7 @@ import cv2
 import threading
 import os
 import math
+from datetime import datetime
 from deepface import DeepFace
 from ultralytics import YOLO
 from logger import EventLogger
@@ -25,11 +26,26 @@ last_face_match_confidence = "N/A"
 last_face_match_name = "None"
 
 # Tracking dictionaries
-# tracked_persons: id -> {"name": "Unknown", "entry_log": bool, "last_seen": timestamp, "face_identified": bool, "bbox": (x1, y1, x2, y2), "conf": float}
+# tracked_persons: id -> {"name": "Unknown", "prev_name": "Unknown", "entry_log": bool, "last_seen": timestamp, "face_identified": bool, "bbox": (x1, y1, x2, y2), "conf": float}
 tracked_persons = {}
 
 # tracked_objects: id -> {"cls_name": name, "linked_person": id, "positions": [(x,y)], "stationary": bool, "lost_alert_logged": bool, "last_seen": timestamp, "bbox": (x1, y1, x2, y2), "conf": float}
 tracked_objects = {}
+
+MAX_UI_EVENTS = 5
+ui_events = []
+
+def add_ui_event(event_text, is_unknown=False):
+    current_time_str = datetime.now().strftime("%H:%M:%S")
+    color = (0, 0, 255) if is_unknown else (255, 255, 255)
+    ui_events.append({'time': current_time_str, 'text': event_text, 'color': color})
+    if len(ui_events) > MAX_UI_EVENTS:
+        ui_events.pop(0)
+
+def draw_transparent_rect(img, top_left, bottom_right, color, alpha):
+    overlay = img.copy()
+    cv2.rectangle(overlay, top_left, bottom_right, color, -1)
+    cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
 
 def get_distance(p1, p2):
     return math.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
@@ -39,21 +55,36 @@ def recognize_face_task(face_image, track_id):
     try:
         temp_img_path = f"temp_roi_{track_id}.jpg"
         cv2.imwrite(temp_img_path, face_image)
-        # We pass the person ROI. DeepFace will use its detector (default is opencv) to find the face within.
-        dfs = DeepFace.find(img_path=temp_img_path, db_path="face_database", enforce_detection=False, detector_backend='opencv', silent=True)
+        # We pass the person ROI. DeepFace will use OpenCV to quickly find the face within.
+        dfs = DeepFace.find(img_path=temp_img_path, db_path="databases", model_name="Facenet", distance_metric="cosine", enforce_detection=True, detector_backend='opencv', silent=True)
         if len(dfs) > 0 and not dfs[0].empty:
-            matched_path = dfs[0].iloc[0]['identity']
-            recognized_name = os.path.splitext(os.path.basename(matched_path))[0].replace("_", " ")
+            # Extract distance metric to apply a strict threshold
+            distance_metric = dfs[0].iloc[0].get('Facenet_cosine', dfs[0].iloc[0].get('distance', 1.0))
+            matched_identity = dfs[0].iloc[0]['identity']
+            print(f"[DEBUG] Track ID {track_id} matched {matched_identity} with distance: {distance_metric:.4f}")
             
-            # Extract distance/confidence metric from DeepFace if available
-            distance_metric = dfs[0].iloc[0].get('VGG-Face_cosine', dfs[0].iloc[0].get('distance', 0.0))
-            last_face_match_confidence = f"{max(0, 100 - (distance_metric * 100)):.2f}%"
-            last_face_match_name = recognized_name
+            if distance_metric <= 0.42: # Threshold relaxed to 0.42 (default 0.40) to help recognize people with fewer photos
+                matched_path = dfs[0].iloc[0]['identity']
+                
+                # Check if the file is inside a person-specific subdirectory
+                parent_dir = os.path.basename(os.path.dirname(matched_path))
+                if parent_dir and parent_dir not in ["train", "validation", "databases"]:
+                    recognized_name = parent_dir.replace("_", " ")
+                else:
+                    recognized_name = os.path.splitext(os.path.basename(matched_path))[0].replace("_", " ")
+                
+                last_face_match_confidence = f"{max(0, 100 - (distance_metric * 100)):.2f}%"
+                last_face_match_name = recognized_name
 
-            if track_id in tracked_persons:
-                tracked_persons[track_id]["name"] = recognized_name
-                tracked_persons[track_id]["face_identified"] = True
+                if track_id in tracked_persons:
+                    tracked_persons[track_id]["name"] = recognized_name
+                    tracked_persons[track_id]["face_identified"] = True
+            else:
+                if track_id in tracked_persons:
+                    tracked_persons[track_id]["name"] = "Unknown"
+                    tracked_persons[track_id]["face_identified"] = True
     except Exception as e:
+        # Catch any other DeepFace errors (like no face detected) without spamming the console
         pass
     finally:
         is_recognizing = False
@@ -85,6 +116,16 @@ while True:
     frame = vs.read()
     if frame is None:
         continue
+        
+    # Increase the actual size of the frame
+    import imutils
+    frame = imutils.resize(frame, width=1000)
+    
+    frame_count += 1
+    if time.time() - start_time >= 1.0:
+        current_fps = frame_count / (time.time() - start_time)
+        frame_count = 0
+        start_time = time.time()
     
     # Optional: Resize for speed if necessary, but yolov8 auto-scales
     # frame = imutils.resize(frame, width=800)
@@ -112,14 +153,22 @@ while True:
                 if track_id not in tracked_persons:
                     tracked_persons[track_id] = {
                         "name": "Unknown",
+                        "prev_name": "Unknown",
                         "entry_log": False,
                         "last_seen": current_time,
                         "face_identified": False,
                         "bbox": (startX, startY, endX, endY)
                     }
+                    add_ui_event(f"ID: {track_id} Unknown", is_unknown=True)
                 else:
                     tracked_persons[track_id]["last_seen"] = current_time
                     tracked_persons[track_id]["bbox"] = (startX, startY, endX, endY)
+                    
+                    current_name = tracked_persons[track_id]["name"]
+                    prev_name = tracked_persons[track_id].get("prev_name", "Unknown")
+                    if current_name != prev_name and current_name != "Unknown":
+                        add_ui_event(f"ID: {track_id} {current_name} (Known)", is_unknown=False)
+                        tracked_persons[track_id]["prev_name"] = current_name
                 
                 # Log Entry
                 if not tracked_persons[track_id]["entry_log"]:
@@ -137,9 +186,15 @@ while True:
                         
                 # Draw Box
                 name = tracked_persons[track_id]["name"]
-                label = f"Person ID:{track_id} - {name}"
-                cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0), 2)
-                cv2.putText(frame, label, (startX, startY - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                label = f"ID: {track_id} | {name}"
+                color = (0, 0, 255) if name == "Unknown" else (0, 255, 0)
+                
+                cv2.rectangle(frame, (startX, startY), (endX, endY), color, 2)
+                
+                # Draw filled rectangle for label
+                (text_w, text_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
+                cv2.rectangle(frame, (startX, max(0, startY - text_h - 10)), (startX + text_w + 10, startY), color, -1)
+                cv2.putText(frame, label, (startX + 5, startY - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
                 
         # Phase 2: Process Objects
         for box, track_id, cls, conf in zip(boxes, track_ids, clss, confs):
@@ -246,8 +301,40 @@ while True:
         if current_time - tracked_objects[oid]["last_seen"] > DISAPPEAR_TIMEOUT * 2: # Keep objects a bit longer
             del tracked_objects[oid]
 
+    # Draw Top-Left Stats Panel
+    h_frame, w_frame, _ = frame.shape
+    panel_x1, panel_y1 = 10, 10
+    panel_x2, panel_y2 = 280, 140
+    draw_transparent_rect(frame, (panel_x1, panel_y1), (panel_x2, panel_y2), (0, 0, 0), 0.6)
+
+    total_people = len(tracked_persons)
+    known_count = sum(1 for p in tracked_persons.values() if p["name"] != "Unknown")
+    unknown_count = sum(1 for p in tracked_persons.values() if p["name"] == "Unknown")
+
+    current_date_time = datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
+    cv2.putText(frame, current_date_time, (panel_x1 + 10, panel_y1 + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+    cv2.putText(frame, f"People Tracked: {total_people}", (panel_x1 + 10, panel_y1 + 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+    
+    cv2.putText(frame, f"Known: {known_count} | ", (panel_x1 + 10, panel_y1 + 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+    (w, h), _ = cv2.getTextSize(f"Known: {known_count} | ", cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
+    cv2.putText(frame, f"Unknown: {unknown_count}", (panel_x1 + 10 + w, panel_y1 + 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 1)
+    
+    cv2.putText(frame, f"FPS: {current_fps:.1f}", (panel_x1 + 10, panel_y1 + 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+
+    # Draw Bottom-Left Event Log
+    log_x1, log_y1 = 10, h_frame - 160
+    log_x2, log_y2 = 320, h_frame - 10
+    draw_transparent_rect(frame, (log_x1, log_y1), (log_x2, log_y2), (0, 0, 0), 0.6)
+
+    cv2.putText(frame, "Event Log", (log_x1 + 10, log_y1 + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 1)
+
+    y_offset = log_y1 + 50
+    for event in ui_events:
+        cv2.putText(frame, f"{event['time']}  {event['text']}", (log_x1 + 10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, event['color'], 1)
+        y_offset += 20
+
     # Show Frame
-    cv2.imshow("Frame", frame)
+    cv2.imshow("Smart Monitoring - Live Feed", frame)
     key = cv2.waitKey(1) & 0xFF
 
     if key == ord("q"):
