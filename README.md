@@ -110,10 +110,4 @@ The real-time feed includes:
 - **Top-Left Panel**: Current Date/Time, Total People Tracked, Known vs. Unknown count, and FPS.
 - **Bottom-Left Panel**: Rolling Event Log capturing Entry/Exit and security alerts.
 
-## 🤝 Contributing
 
-Contributions, issues, and feature requests are welcome! Feel free to check the issues page. If making major changes, please open an issue first to discuss your proposed modifications.
-
-## 📄 License
-
-This project is licensed under the MIT License.
