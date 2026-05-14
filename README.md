@@ -98,16 +98,24 @@ This will generate graph images in the `logs/` directory for reporting.
 
 If you are using this project for an academic evaluation with the LFW Deep-Funneled dataset:
 
-```bash
-python face_preprocessing.py
-```
-This script detects faces, normalizes them, and saves the output to `dataset/processed_faces/`. See `RESEARCH_SETUP.md` for full methodology.
-
-## 📊 System Dashboard (Live UI)
-
-The real-time feed includes:
-- **Bounding Boxes**: Green for known persons, Red for unknown persons, Blue for objects, Red for abandoned/lost objects.
-- **Top-Left Panel**: Current Date/Time, Total People Tracked, Known vs. Unknown count, and FPS.
-- **Bottom-Left Panel**: Rolling Event Log capturing Entry/Exit and security alerts.
 
 
+## 📊 Output
+
+* Displays input with bounding boxes around detected objects
+* Shows coordinates (x, y, width, height) of each detected object
+
+## 📝 Future Enhancements
+
+* Integration with **deep learning models (YOLO, SSD, Faster R-CNN)**
+* Multi-object tracking
+* Performance improvements for large-scale datasets
+* GUI-based user interface
+
+## 🤝 Contributing
+
+Pull requests are welcome! For major changes, please open an issue first to discuss what you would like to change.
+
+## 📄 License
+
+This project is licensed under the MIT License.
