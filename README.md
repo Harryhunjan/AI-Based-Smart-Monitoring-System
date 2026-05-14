@@ -1,88 +1,118 @@
-# Object Detection Project
+# 👁️ AI Smart Surveillance & Object Detection
+
+![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
+![OpenCV](https://img.shields.io/badge/OpenCV-4.x-green.svg)
+![YOLOv8](https://img.shields.io/badge/YOLOv8-Ultralytics-yellow.svg)
+![DeepFace](https://img.shields.io/badge/DeepFace-Facenet-orange.svg)
+![License](https://img.shields.io/badge/License-MIT-lightgrey.svg)
 
 ## 📌 Overview
 
-This project implements an **Object Detection System** using **Python, OpenCV, and NumPy**. It is capable of detecting specified object categories in images, videos, or real-time webcam input. The system applies bounding box techniques to highlight detected objects and provides their spatial positions.
+This repository hosts an advanced **AI-powered Smart Monitoring System**. Initially starting as a basic object detection script, the project has evolved into a full-scale surveillance application that combines **YOLOv8** for real-time object/person detection and **DeepFace** for facial recognition.
 
-## 🚀 Features
+It provides a sophisticated live-feed UI that tracks individuals, identifies known vs. unknown persons, links belongings to their owners, and flags when an item is left behind (abandoned object detection). It also includes a full pipeline for academic research using face preprocessing on the LFW dataset.
 
-* Detects objects in **images, videos, and live webcam feed**
-* Uses **OpenCV** for image processing and visualization
-* Employs **bounding boxes** to locate and track detected objects
-* Efficient real-time detection using **NumPy optimization**
-* Modular and extensible for integrating with other ML/DL models
+## 🚀 Key Features
 
-## 🛠️ Technologies Used
+* **Real-Time Object & Person Tracking**: Uses **YOLOv8** and internal trackers to track multiple people and objects simultaneously.
+* **Facial Recognition (Known vs. Unknown)**: Integrates **DeepFace (Facenet)** to identify registered faces and explicitly highlights "Unknown" individuals.
+* **Abandoned Object Detection**: Intelligently links personal items (e.g., backpacks, laptops, suitcases) to the person carrying them. Triggers a **LOST** alert if the person walks away and leaves the item behind.
+* **Event Logging & Analytics**: Automatically logs events like `ENTRY`, `EXIT`, and `ITEM_LEFT_BEHIND` with timestamps and names. Includes data visualization scripts to generate insightful metrics.
+* **Smart UI Dashboard**: An integrated OpenCV overlay showing rolling FPS, active tracking counts, recognized identities, and a live event log.
+* **Dataset Preprocessing (Research Mode)**: Includes automated face extraction, normalization, and resizing utilities for the LFW dataset to train and evaluate recognition models.
 
-* **Python 3.x**
-* **OpenCV** (cv2)
-* **NumPy**
+## 🛠️ Technology Stack
+
+* **Core Language**: Python 3.x
+* **Computer Vision**: OpenCV (`cv2`), imutils
+* **Object Detection & Tracking**: Ultralytics YOLO (`yolov8n.pt`)
+* **Facial Recognition**: DeepFace (Facenet model, Cosine distance metric)
+* **Data Processing & Analytics**: NumPy, Pandas, Matplotlib, Seaborn
 
 ## 📂 Project Structure
 
-```
+```text
 Project/
-│── main.py          # Main script to run object detection
-│── utils.py         # Utility functions for processing
-│── requirements.txt # Dependencies
-│── samples/         # Sample images/videos for testing
-│── README.md        # Project documentation
+│── real_time_object_detection.py  # Main entry script for the live surveillance feed
+│── deep_learning_object_detection.py # Standard deep learning object detection code
+│── face_preprocessing.py          # Preprocesses LFW dataset for facial recognition training
+│── check_db.py                    # Script to verify and manage the face database
+│── analyze_metrics.py             # Generates analytical graphs from system event logs
+│── logger.py                      # Handles event logging (Entry, Exit, Left Item)
+│── databases/                     # Cached representations for facial recognition
+│── face_database/                 # Folder containing subfolders of known faces
+│── dataset/                       # Output folder for preprocessed research datasets
+│── logs/                          # System and preprocessing event logs and generated graphs
+│── yolov8n.pt                     # Pre-trained YOLOv8 nano model
+│── requirements.txt               # Python dependencies
+│── RESEARCH_SETUP.md              # Research paper methodology and academic notes
 ```
 
 ## ⚙️ Installation & Setup
 
-1. Clone the repository:
-
+1. **Clone the repository:**
    ```bash
    git clone https://github.com/Harryhunjan/Object-Detection.git
-   cd Object-Detection/Project
+   cd Object-Detection
    ```
 
-2. Install dependencies:
-
+2. **Install dependencies:**
    ```bash
+   cd Project
    pip install -r requirements.txt
+   pip install pandas matplotlib seaborn deepface ultralytics
    ```
+   *(Ensure you have PyTorch installed with CUDA support if you intend to run inference on a GPU).*
 
-3. Run the detection script:
-
-   ```bash
-   python main.py
-   ```
+3. **Prepare the Face Database:**
+   * Add images of known individuals into the `Project/face_database/` directory. Create a subfolder for each person (e.g., `face_database/Harry/1.jpg`).
+   * Run the DB check script to initialize embeddings:
+     ```bash
+     python check_db.py
+     ```
 
 ## 🎯 Usage
 
-* To run detection on an image:
+### 1. Smart Surveillance Dashboard (Live)
 
-  ```bash
-  python main.py --image samples/test.jpg
-  ```
-* To run detection on a video:
+To launch the real-time smart surveillance dashboard using your webcam:
 
-  ```bash
-  python main.py --video samples/test.mp4
-  ```
-* To run real-time detection using a webcam:
+```bash
+cd Project
+python real_time_object_detection.py
+```
 
-  ```bash
-  python main.py --webcam
-  ```
+*Press **`q`** at any time to safely exit the video stream.*
 
-## 📊 Output
+### 2. Analytics & Graphs
 
-* Displays input with bounding boxes around detected objects
-* Shows coordinates (x, y, width, height) of each detected object
+After running the main script, the system will generate logs inside `logs/monitoring_events.csv`.
+To visualize the tracked events (Entries, Exits, Abandoned Objects, Person Frequency):
 
-## 📝 Future Enhancements
+```bash
+python analyze_metrics.py
+```
+This will generate graph images in the `logs/` directory for reporting.
 
-* Integration with **deep learning models (YOLO, SSD, Faster R-CNN)**
-* Multi-object tracking
-* Performance improvements for large-scale datasets
-* GUI-based user interface
+### 3. Face Preprocessing (For Research)
+
+If you are using this project for an academic evaluation with the LFW Deep-Funneled dataset:
+
+```bash
+python face_preprocessing.py
+```
+This script detects faces, normalizes them, and saves the output to `dataset/processed_faces/`. See `RESEARCH_SETUP.md` for full methodology.
+
+## 📊 System Dashboard (Live UI)
+
+The real-time feed includes:
+- **Bounding Boxes**: Green for known persons, Red for unknown persons, Blue for objects, Red for abandoned/lost objects.
+- **Top-Left Panel**: Current Date/Time, Total People Tracked, Known vs. Unknown count, and FPS.
+- **Bottom-Left Panel**: Rolling Event Log capturing Entry/Exit and security alerts.
 
 ## 🤝 Contributing
 
-Pull requests are welcome! For major changes, please open an issue first to discuss what you would like to change.
+Contributions, issues, and feature requests are welcome! Feel free to check the issues page. If making major changes, please open an issue first to discuss your proposed modifications.
 
 ## 📄 License
 
