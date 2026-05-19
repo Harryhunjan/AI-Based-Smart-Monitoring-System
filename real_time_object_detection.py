@@ -56,14 +56,14 @@ def recognize_face_task(face_image, track_id):
         temp_img_path = f"temp_roi_{track_id}.jpg"
         cv2.imwrite(temp_img_path, face_image)
         # We pass the person ROI. DeepFace will use OpenCV to quickly find the face within.
-        dfs = DeepFace.find(img_path=temp_img_path, db_path="databases", model_name="Facenet", distance_metric="cosine", enforce_detection=True, detector_backend='opencv', silent=True)
+        dfs = DeepFace.find(img_path=temp_img_path, db_path="databases", model_name="Facenet", distance_metric="cosine", enforce_detection=False, detector_backend='opencv', silent=True)
         if len(dfs) > 0 and not dfs[0].empty:
             # Extract distance metric to apply a strict threshold
             distance_metric = dfs[0].iloc[0].get('Facenet_cosine', dfs[0].iloc[0].get('distance', 1.0))
             matched_identity = dfs[0].iloc[0]['identity']
             print(f"[DEBUG] Track ID {track_id} matched {matched_identity} with distance: {distance_metric:.4f}")
             
-            if distance_metric <= 0.42: # Threshold relaxed to 0.42 (default 0.40) to help recognize people with fewer photos
+            if distance_metric <= 0.45: # Threshold relaxed to 0.45 to improve recognition chances
                 matched_path = dfs[0].iloc[0]['identity']
                 
                 # Check if the file is inside a person-specific subdirectory
@@ -80,9 +80,9 @@ def recognize_face_task(face_image, track_id):
                     tracked_persons[track_id]["name"] = recognized_name
                     tracked_persons[track_id]["face_identified"] = True
             else:
-                if track_id in tracked_persons:
-                    tracked_persons[track_id]["name"] = "Unknown"
-                    tracked_persons[track_id]["face_identified"] = True
+                # Still unknown, but we don't set face_identified to True,
+                # so it will keep retrying in subsequent frames when is_recognizing is False
+                pass
     except Exception as e:
         # Catch any other DeepFace errors (like no face detected) without spamming the console
         pass
