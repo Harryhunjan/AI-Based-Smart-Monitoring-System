@@ -1,3 +1,9 @@
 numpy
 imutils
 opencv-python
+ultralytics
+deepface
+tf-keras
+pandas
+matplotlib
+seaborn
