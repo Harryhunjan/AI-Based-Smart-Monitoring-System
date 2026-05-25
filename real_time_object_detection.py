@@ -2,6 +2,7 @@
 
 from imutils.video import VideoStream
 from imutils.video import FPS
+import imutils
 import numpy as np
 import time
 import cv2
@@ -118,7 +119,6 @@ while True:
         continue
         
     # Increase the actual size of the frame
-    import imutils
     frame = imutils.resize(frame, width=1000)
     
     frame_count += 1
@@ -148,6 +148,12 @@ while True:
             if cls == 0:  # Person
                 current_person_ids.append(track_id)
                 (startX, startY, endX, endY) = box.astype("int")
+                # Clip to frame dimensions
+                h_frame, w_frame, _ = frame.shape
+                startX = max(0, startX)
+                startY = max(0, startY)
+                endX = min(w_frame, endX)
+                endY = min(h_frame, endY)
                 
                 # Register new person
                 if track_id not in tracked_persons:
@@ -200,6 +206,12 @@ while True:
         for box, track_id, cls, conf in zip(boxes, track_ids, clss, confs):
             if cls != 0: # Object (Backpack, Laptop, etc.)
                 (startX, startY, endX, endY) = box.astype("int")
+                # Clip to frame dimensions
+                h_frame, w_frame, _ = frame.shape
+                startX = max(0, startX)
+                startY = max(0, startY)
+                endX = min(w_frame, endX)
+                endY = min(h_frame, endY)
                 cx = int((startX + endX) / 2)
                 cy = int((startY + endY) / 2)
                 cls_name = model.names[cls]
@@ -257,7 +269,7 @@ while True:
                         
                 # Lost Object Logic
                 color = (255, 0, 0) # Default Blue for objects
-                if tr_obj["linked_person"] is not None:
+                if tr_obj["linked_person"] is not None and tr_obj["linked_person"] in tracked_persons:
                     p_name = tracked_persons[tr_obj["linked_person"]].get("name", "Unknown")
                     status_text = f"{cls_name.title()} (Linked to: {p_name})"
                 else:
