@@ -10,7 +10,7 @@ import threading
 import os
 import math
 from datetime import datetime
-from deepface import DeepFace
+import face_recognizer
 from ultralytics import YOLO
 from logger import EventLogger
 
@@ -54,46 +54,25 @@ def get_distance(p1, p2):
 def recognize_face_task(face_image, track_id):
     global is_recognizing, last_face_match_confidence, last_face_match_name
     try:
-        temp_img_path = f"temp_roi_{track_id}.jpg"
-        cv2.imwrite(temp_img_path, face_image)
-        # We pass the person ROI. DeepFace will use OpenCV to quickly find the face within.
-        dfs = DeepFace.find(img_path=temp_img_path, db_path="databases", model_name="Facenet", distance_metric="cosine", enforce_detection=False, detector_backend='opencv', silent=True)
-        if len(dfs) > 0 and not dfs[0].empty:
-            # Extract distance metric to apply a strict threshold
-            distance_metric = dfs[0].iloc[0].get('Facenet_cosine', dfs[0].iloc[0].get('distance', 1.0))
-            matched_identity = dfs[0].iloc[0]['identity']
-            print(f"[DEBUG] Track ID {track_id} matched {matched_identity} with distance: {distance_metric:.4f}")
+        face_recognizer.initialize_model()
+        face_recognizer.load_known_faces()
+        
+        name, similarity = face_recognizer.recognize_face(face_image, track_id)
+        
+        if name != "Unknown":
+            last_face_match_confidence = f"{similarity * 100:.2f}%"
+            last_face_match_name = name
             
-            if distance_metric <= 0.45: # Threshold relaxed to 0.45 to improve recognition chances
-                matched_path = dfs[0].iloc[0]['identity']
-                
-                # Check if the file is inside a person-specific subdirectory
-                parent_dir = os.path.basename(os.path.dirname(matched_path))
-                if parent_dir and parent_dir not in ["train", "validation", "databases"]:
-                    recognized_name = parent_dir.replace("_", " ")
-                else:
-                    recognized_name = os.path.splitext(os.path.basename(matched_path))[0].replace("_", " ")
-                
-                last_face_match_confidence = f"{max(0, 100 - (distance_metric * 100)):.2f}%"
-                last_face_match_name = recognized_name
-
-                if track_id in tracked_persons:
-                    tracked_persons[track_id]["name"] = recognized_name
-                    tracked_persons[track_id]["face_identified"] = True
-            else:
-                # Still unknown, but we don't set face_identified to True,
-                # so it will keep retrying in subsequent frames when is_recognizing is False
-                pass
+            if track_id in tracked_persons:
+                tracked_persons[track_id]["name"] = name
+                tracked_persons[track_id]["face_identified"] = True
+        else:
+            last_face_match_confidence = f"{similarity * 100:.2f}%"
+            last_face_match_name = "Unknown"
     except Exception as e:
-        # Catch any other DeepFace errors (like no face detected) without spamming the console
-        pass
+        print(f"[ERROR] Error inside recognize_face_task: {e}")
     finally:
         is_recognizing = False
-        try:
-            if os.path.exists(temp_img_path):
-                os.remove(temp_img_path)
-        except:
-            pass
 
 print("[INFO] starting video stream...")
 vs = VideoStream(src=0).start()

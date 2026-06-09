@@ -2,8 +2,9 @@ numpy
 imutils
 opencv-python
 ultralytics
-deepface
-tf-keras
+insightface
+onnxruntime
 pandas
 matplotlib
 seaborn
+customtkinter
