@@ -1,112 +1,219 @@
-# 👁️ AI Smart Surveillance & Object Detection
+# AI-Based Smart Monitoring System
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
-![OpenCV](https://img.shields.io/badge/OpenCV-4.x-green.svg)
 ![YOLOv8](https://img.shields.io/badge/YOLOv8-Ultralytics-yellow.svg)
-![DeepFace](https://img.shields.io/badge/DeepFace-Facenet-orange.svg)
+![InsightFace](https://img.shields.io/badge/InsightFace-ArcFace-orange.svg)
+![OpenCV](https://img.shields.io/badge/OpenCV-4.x-green.svg)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey.svg)
 
-## 📌 Overview
+A real-time AI surveillance system that detects and tracks people via webcam, identifies known faces using ArcFace embeddings, links personal belongings to their owners, and fires alerts when an item is left unattended. All events are logged to a queryable CSV file with timestamps.
 
-This repository hosts an advanced **AI-powered Smart Monitoring System**. Initially starting as a basic object detection script, the project has evolved into a full-scale surveillance application that combines **YOLOv8** for real-time object/person detection and **DeepFace** for facial recognition.
+---
 
-It provides a sophisticated live-feed UI that tracks individuals, identifies known vs. unknown persons, links belongings to their owners, and flags when an item is left behind (abandoned object detection). It also includes a full pipeline for academic research using face preprocessing on the LFW dataset.
+## What it does
 
-## 🚀 Key Features
+- **Person detection and tracking** — YOLOv8 nano detects people frame by frame. ByteTrack assigns each person a persistent ID across frames, even through brief occlusions.
+- **Face recognition** — InsightFace (`buffalo_l` model) extracts 512-dimensional ArcFace embeddings. A person is matched against registered identities using cosine similarity. Recognition runs in a background thread to avoid blocking the video loop.
+- **Object ownership tracking** — Bags, laptops, bottles, phones, and suitcases are detected and linked to the nearest person using Euclidean distance between bounding box centers.
+- **Abandoned object detection** — If a tracked object stays stationary for 30 consecutive frames and its linked person moves away or leaves the frame, a `ITEM_LEFT_BEHIND` alert is logged and the bounding box turns red.
+- **Event logging** — Every `ENTRY`, `EXIT`, and `ITEM_LEFT_BEHIND` event is appended to `logs/monitoring_events.csv` with a timestamp, person name, and item class.
+- **Live dashboard overlay** — OpenCV renders a stats panel (people count, known/unknown split, FPS, timestamp) and a rolling event log directly on the video feed.
+- **Analytics** — Run `analyze_metrics.py` after a session to generate event frequency graphs and timelines from the CSV log.
 
-* **Real-Time Object & Person Tracking**: Uses **YOLOv8** and internal trackers to track multiple people and objects simultaneously.
-* **Facial Recognition (Known vs. Unknown)**: Integrates **DeepFace (Facenet)** to identify registered faces and explicitly highlights "Unknown" individuals.
-* **Abandoned Object Detection**: Intelligently links personal items (e.g., backpacks, laptops, suitcases) to the person carrying them. Triggers a **LOST** alert if the person walks away and leaves the item behind.
-* **Event Logging & Analytics**: Automatically logs events like `ENTRY`, `EXIT`, and `ITEM_LEFT_BEHIND` with timestamps and names. Includes data visualization scripts to generate insightful metrics.
-* **Smart UI Dashboard**: An integrated OpenCV overlay showing rolling FPS, active tracking counts, recognized identities, and a live event log.
-* **Dataset Preprocessing (Research Mode)**: Includes automated face extraction, normalization, and resizing utilities for the LFW dataset to train and evaluate recognition models.
+---
 
-## 🛠️ Technology Stack
+## Technology stack
 
-* **Core Language**: Python 3.x
-* **Computer Vision**: OpenCV (`cv2`), imutils
-* **Object Detection & Tracking**: Ultralytics YOLO (`yolov8n.pt`)
-* **Facial Recognition**: DeepFace (Facenet model, Cosine distance metric)
-* **Data Processing & Analytics**: NumPy, Pandas, Matplotlib, Seaborn
+| Component | Technology | Details |
+|---|---|---|
+| Object detection | YOLOv8 nano (`yolov8n.pt`) | Ultralytics single-stage detector |
+| Multi-object tracking | ByteTrack | Embedded in YOLO via `persist=True` |
+| Face recognition | InsightFace `buffalo_l` | ArcFace model, cosine similarity matching |
+| Embedding cache | Pickle (`.pkl`) | Averaged embeddings per registered person |
+| Frame capture | imutils `VideoStream` | Threaded webcam capture |
+| Computer vision | OpenCV (`cv2`) | Drawing, display, frame ops |
+| Event logging | Pandas + CSV | Append-mode, structured log |
+| Analytics | Matplotlib + Seaborn | Post-session graph generation |
+| Language | Python 3.8+ | |
 
-## 📂 Project Structure
+---
 
-```text
+## Project structure
+
+```
 .
-├── real_time_object_detection.py  # Main entry script for the live surveillance feed
-│── deep_learning_object_detection.py # Standard deep learning object detection code
-│── face_preprocessing.py          # Preprocesses LFW dataset for facial recognition training
-│── check_db.py                    # Script to verify and manage the face database
-│── analyze_metrics.py             # Generates analytical graphs from system event logs
-│── logger.py                      # Handles event logging (Entry, Exit, Left Item)
-│── databases/                     # Cached representations for facial recognition
-│── face_database/                 # Folder containing subfolders of known faces
-│── dataset/                       # Output folder for preprocessed research datasets
-│── logs/                          # System and preprocessing event logs and generated graphs
-│── yolov8n.pt                     # Pre-trained YOLOv8 nano model
-│── requirements.txt               # Python dependencies
-│── RESEARCH_SETUP.md              # Research paper methodology and academic notes
+├── real_time_object_detection.py   # Main loop — detection, tracking, rendering
+├── face_recognizer.py              # InsightFace / ArcFace recognition pipeline
+├── logger.py                       # Event logger (CSV append)
+├── config.py                       # All tunable parameters
+├── analyze_metrics.py              # Post-session analytics graphs
+├── face_preprocessing.py           # LFW dataset preprocessing (research use)
+├── check_db.py                     # Rebuild face embedding cache
+├── requirements.txt                # Python dependencies
+├── RESEARCH_SETUP.md               # Academic evaluation methodology
+├── face_database/                  # Registered faces — one subfolder per person
+│   └── Harry/
+│       ├── 1.jpg
+│       └── 2.jpg
+├── databases/                      # Auto-generated ArcFace embedding cache
+│   └── known_faces_cache.pkl
+├── logs/                           # Event logs and generated graphs
+│   └── monitoring_events.csv
+└── Video/                          # Sample video files
 ```
 
-## ⚙️ Installation & Setup
+---
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/Harryhunjan/Object-Detection.git
-   cd Object-Detection
-   ```
+## Configuration
 
-2. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   pip install pandas matplotlib seaborn deepface ultralytics
-   ```
-   *(Ensure you have PyTorch installed with CUDA support if you intend to run inference on a GPU).*
+All tunable values are in `config.py`:
 
-3. **Prepare the Face Database:**
-   * Add images of known individuals into the `face_database/` directory. Create a subfolder for each person (e.g., `face_database/Harry/1.jpg`).
-   * Run the DB check script to initialize embeddings:
-     ```bash
-     python check_db.py
-     ```
+```python
+FACE_MATCH_THRESHOLD = 0.55   # Cosine similarity threshold (0–1). Higher = stricter matching.
+DETECTION_THRESHOLD  = 0.5    # Minimum InsightFace detection confidence to attempt recognition.
+COOLDOWN_TIME        = 2.0    # Seconds before re-attempting recognition on the same track ID.
+MODEL_NAME           = "buffalo_l"  # InsightFace model package (includes ArcFace + detection).
+DEFAULT_DB_PATH      = "databases"  # Directory where the embedding cache is stored.
+CACHE_FILE           = "databases/known_faces_cache.pkl"
+```
 
-## 🎯 Usage
+Values hardcoded in `real_time_object_detection.py` (not yet wired to config):
 
-### 1. Smart Surveillance Dashboard (Live)
+```python
+STATIONARY_THRESH_PX       = 20   # Max pixel movement for an object to be considered stationary.
+STATIONARY_FRAMES_REQUIRED = 30   # Frames an object must be stationary before triggering alert.
+DISAPPEAR_TIMEOUT          = 2.0  # Seconds before a missing person is logged as EXIT.
+```
 
-To launch the real-time smart surveillance dashboard using your webcam:
+---
+
+## Installation
+
+**1. Clone the repository**
+
+```bash
+git clone https://github.com/Harryhunjan/AI-Based-Smart-Monitoring-System.git
+cd AI-Based-Smart-Monitoring-System
+```
+
+**2. Install dependencies**
+
+```bash
+pip install -r requirements.txt
+```
+
+Core dependencies: `ultralytics`, `insightface`, `opencv-python`, `imutils`, `numpy`, `pandas`, `matplotlib`, `seaborn`
+
+For GPU acceleration, install PyTorch with CUDA support before running:
+```bash
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+```
+
+**3. Register known faces**
+
+Add images of people you want to identify into `face_database/`. Create one subfolder per person:
+
+```
+face_database/
+├── Harry/
+│   ├── 1.jpg
+│   └── 2.jpg
+└── Alice/
+    └── alice_front.jpg
+```
+
+Then build the embedding cache:
+
+```bash
+python check_db.py
+```
+
+This scans every image, extracts ArcFace embeddings, averages them per person, and saves the result to `databases/known_faces_cache.pkl`. Re-run this whenever you add or update registered faces.
+
+---
+
+## Usage
+
+**Run the live surveillance feed**
 
 ```bash
 python real_time_object_detection.py
 ```
 
-*Press **`q`** at any time to safely exit the video stream.*
+Press `q` to exit cleanly.
 
-### 2. Analytics & Graphs
-
-After running the main script, the system will generate logs inside `logs/monitoring_events.csv`.
-To visualize the tracked events (Entries, Exits, Abandoned Objects, Person Frequency):
+**Generate analytics from a recorded session**
 
 ```bash
 python analyze_metrics.py
 ```
-This will generate graph images in the `logs/` directory for reporting.
 
-### 3. Face Preprocessing (For Research)
+Reads `logs/monitoring_events.csv` and outputs graphs to the `logs/` directory.
 
-If you are using this project for an academic evaluation with the LFW Deep-Funneled dataset:
+**LFW dataset preprocessing (research only)**
 
+```bash
+python face_preprocessing.py
+```
 
+Preprocesses the LFW Deep-Funneled dataset for academic benchmarking. Not required for live system use.
 
-## 📊 Output
+---
 
-* Displays input with bounding boxes around detected objects
-* Shows coordinates (x, y, width, height) of each detected object
+## How face recognition works
 
-## 📝 Future Enhancements
+1. When YOLOv8 detects a new person (new ByteTrack ID), their bounding box crop is passed to a background daemon thread.
+2. InsightFace (`buffalo_l`) runs face detection and alignment within the crop. The largest detected face is selected.
+3. ArcFace generates a 512-dimensional embedding for that face.
+4. The embedding is compared against all cached identity embeddings using cosine similarity.
+5. If the best match score is above `FACE_MATCH_THRESHOLD` (default `0.55`), the person is identified by name. Otherwise they remain "Unknown".
+6. A per-track cooldown (`COOLDOWN_TIME = 2.0s`) prevents redundant recognition calls on the same person.
+7. GPU is used automatically if CUDA is available; falls back to CPU if not.
 
-* Integration with **deep learning models (YOLO, SSD, Faster R-CNN)**
-* Multi-object tracking
-* Performance improvements for large-scale datasets
-* GUI-based user interface
+---
+
+## Event log format
+
+Events are appended to `logs/monitoring_events.csv`:
+
+| Timestamp | Event | Person_Name | Item_Class | Confidence |
+|---|---|---|---|---|
+| 2025-06-01 10:23:11 | ENTRY | Harry | None | |
+| 2025-06-01 10:23:45 | ITEM_LEFT_BEHIND | Harry | backpack | |
+| 2025-06-01 10:24:02 | EXIT | Harry | None | |
+
+---
+
+## Tracked object classes
+
+The system detects the following COCO object classes alongside people:
+
+| COCO ID | Class |
+|---|---|
+| 0 | person |
+| 24 | backpack |
+| 26 | handbag |
+| 28 | suitcase |
+| 39 | bottle |
+| 63 | laptop |
+| 67 | cell phone |
+
+---
+
+## Known limitations
+
+- **Entry/exit logic is camera-angle dependent.** EXIT is triggered when a person disappears from frame for 2 seconds, not when they cross a physical door. A virtual trip-line approach is the correct fix and is planned.
+- **ByteTrack ID reassignment can cause false entries.** Brief occlusions may cause the tracker to drop and reissue a new ID for the same person, logging a duplicate ENTRY.
+- **Logger is not thread-safe.** The CSV is written synchronously on the main thread. Concurrent reads or multi-camera setups will risk data corruption.
+- **Single-threaded pipeline.** Detection, tracking, recognition, and rendering all block each other. Effective throughput is ~5–12 FPS on CPU.
+
+---
+
+## Roadmap
+
+- [ ] Virtual trip-line entry/exit detection (direction-aware line crossing)
+- [ ] Thread-safe logging with a queue-based writer
+- [ ] Wire `config.py` into the main detection loop (currently hardcoded)
+- [ ] Multi-camera support
+- [ ] ByteTrack ID reassignment deduplication
 
