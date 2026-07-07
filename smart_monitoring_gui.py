@@ -143,6 +143,10 @@ class VideoWorker(threading.Thread):
         self.tracked_persons = {}
         self.tracked_objects = {}
         
+        # Face recognition warm-up tracking
+        self.face_rec_warming_up = False
+        self.first_face_result_received = False
+        
         # UI stats variables
         self.current_fps = 0.0
 
@@ -190,6 +194,8 @@ class VideoWorker(threading.Thread):
         self.active_face_tasks.clear()
         self.tracked_persons.clear()
         self.tracked_objects.clear()
+        self.face_rec_warming_up = False
+        self.first_face_result_received = False
 
     def stop_stream(self):
         self.running = False
@@ -238,6 +244,11 @@ class VideoWorker(threading.Thread):
                         res_track_id, matched_path, distance_metric = self.face_result_queue.get_nowait()
                         if res_track_id in self.active_face_tasks:
                             self.active_face_tasks.remove(res_track_id)
+                        
+                        # Mark warm-up as done once we get the first result back
+                        if not self.first_face_result_received:
+                            self.first_face_result_received = True
+                            self.face_rec_warming_up = False
                             
                         if matched_path is not None and distance_metric <= self.dist_threshold:
                             parent_dir = os.path.basename(os.path.dirname(matched_path))
@@ -345,6 +356,9 @@ class VideoWorker(threading.Thread):
                                         face_roi_resized = cv2.resize(face_roi, (224, 224), interpolation=cv2.INTER_CUBIC)
                                         self.active_face_tasks.add(track_id)
                                         self.face_task_queue.put((face_roi_resized, track_id, self.dist_threshold))
+                                        # Signal warm-up if this is the first face task this session
+                                        if not self.first_face_result_received and not self.face_rec_warming_up:
+                                            self.face_rec_warming_up = True
                             
                             # Find linked objects for this person (from self.tracked_objects)
                             linked_objs = []
@@ -512,7 +526,8 @@ class VideoWorker(threading.Thread):
                     "total_people": total_people,
                     "known": known_count,
                     "unknown": unknown_count,
-                    "raw_frame": frame.copy() # reference for screen captures
+                    "raw_frame": frame.copy(), # reference for screen captures
+                    "face_rec_warming_up": self.face_rec_warming_up
                 }
                 
                 # Convert frame back to RGB PIL Image
@@ -714,9 +729,36 @@ class SmartMonitoringApp(ctk.CTk):
         )
         self.video_label.grid(row=0, column=0, sticky="nsew")
         
+        # Face Recognition Warm-up Progress Bar (hidden by default)
+        self.face_rec_bar_frame = ctk.CTkFrame(self.tab_feed, fg_color="#1a1a2e", corner_radius=8, height=50)
+        self.face_rec_bar_frame.grid(row=1, column=0, padx=5, pady=(2, 2), sticky="ew")
+        self.face_rec_bar_frame.grid_columnconfigure(1, weight=1)
+        
+        self.face_rec_bar_icon = ctk.CTkLabel(
+            self.face_rec_bar_frame,
+            text="\U0001f9d1",
+            font=ctk.CTkFont(size=18)
+        )
+        self.face_rec_bar_icon.grid(row=0, column=0, padx=(15, 5), pady=8)
+        
+        self.face_rec_bar_label = ctk.CTkLabel(
+            self.face_rec_bar_frame,
+            text="Face Recognition Initializing...",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="#f1c40f"
+        )
+        self.face_rec_bar_label.grid(row=0, column=1, padx=5, pady=(8, 2), sticky="w")
+        
+        self.face_rec_progress = ctk.CTkProgressBar(self.face_rec_bar_frame, mode="indeterminate", height=6)
+        self.face_rec_progress.grid(row=1, column=0, columnspan=2, padx=15, pady=(0, 8), sticky="ew")
+        
+        # Hide it initially
+        self.face_rec_bar_frame.grid_remove()
+        self.face_rec_bar_visible = False
+        
         # Horizontal Metrics Bar
         self.metrics_bar = ctk.CTkFrame(self.tab_feed, height=60, corner_radius=8)
-        self.metrics_bar.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
+        self.metrics_bar.grid(row=2, column=0, padx=5, pady=5, sticky="ew")
         self.metrics_bar.grid_columnconfigure((0, 1, 2, 3), weight=1)
         
         self.metric_fps = ctk.CTkLabel(self.metrics_bar, text="FPS: 0.0", font=ctk.CTkFont(size=13, weight="bold"))
@@ -733,10 +775,10 @@ class SmartMonitoringApp(ctk.CTk):
         
         # Bottom Console Log Panel
         self.log_header = ctk.CTkLabel(self.tab_feed, text="Live Events & Threat Activity Log", font=ctk.CTkFont(size=13, weight="bold"))
-        self.log_header.grid(row=2, column=0, padx=5, pady=(10, 2), sticky="w")
+        self.log_header.grid(row=3, column=0, padx=5, pady=(10, 2), sticky="w")
         
         self.log_textbox = ctk.CTkTextbox(self.tab_feed, height=130, font=ctk.CTkFont(family="Consolas", size=11))
-        self.log_textbox.grid(row=3, column=0, padx=5, pady=5, sticky="ew")
+        self.log_textbox.grid(row=4, column=0, padx=5, pady=5, sticky="ew")
         self.log_textbox.insert("end", "[INFO] Application started. Initializing dashboard...\n")
         self.log_textbox.configure(state="disabled")
 
@@ -927,6 +969,12 @@ class SmartMonitoringApp(ctk.CTk):
             self.video_label.configure(image=None, text="Camera Stream Off\nClick 'Start Camera Feed' to begin.")
             self.log_internal_event("[SYSTEM] Camera feed monitoring stopped.")
             
+            # Hide face rec progress bar if visible
+            if self.face_rec_bar_visible:
+                self.face_rec_progress.stop()
+                self.face_rec_bar_frame.grid_remove()
+                self.face_rec_bar_visible = False
+            
             # Reset metrics bar
             self.metric_fps.configure(text="FPS: 0.0")
             self.metric_total.configure(text="People Tracked: 0")
@@ -975,6 +1023,18 @@ class SmartMonitoringApp(ctk.CTk):
             self.metric_total.configure(text=f"People Tracked: {stats['total_people']}")
             self.metric_known.configure(text=f"Known Identity: {stats['known']}")
             self.metric_unknown.configure(text=f"Unknown/Unverified: {stats['unknown']}")
+            
+            # Show/hide face recognition warm-up progress bar
+            if stats.get("face_rec_warming_up", False):
+                if not self.face_rec_bar_visible:
+                    self.face_rec_bar_frame.grid()
+                    self.face_rec_progress.start()
+                    self.face_rec_bar_visible = True
+            else:
+                if self.face_rec_bar_visible:
+                    self.face_rec_progress.stop()
+                    self.face_rec_bar_frame.grid_remove()
+                    self.face_rec_bar_visible = False
             
             # Keep reference to raw image and update display
             self.latest_raw_frame = stats["raw_frame"]
