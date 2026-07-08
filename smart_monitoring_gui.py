@@ -132,6 +132,7 @@ class VideoWorker(threading.Thread):
         self.face_result_queue = face_result_queue
         self.status_callback = status_callback
         self.running = False
+        self.video_source = 0  # 0 = webcam, or file path string
         self.daemon = True
         
         # Configuration parameters (can be adjusted on-the-fly)
@@ -200,6 +201,10 @@ class VideoWorker(threading.Thread):
     def stop_stream(self):
         self.running = False
 
+    def set_source(self, source):
+        """Set video source: 0 for webcam, or a file path string for video file."""
+        self.video_source = source
+
     def log_event(self, event_type, person_name="Unknown", item_class="None", is_unknown=False):
         # Log to CSV
         if logger_instance:
@@ -228,11 +233,37 @@ class VideoWorker(threading.Thread):
                 time.sleep(0.1)
                 continue
                 
-            print("[INFO] Starting VideoStream capture...")
-            self.status_callback("Connecting Camera...")
-            vs = VideoStream(src=0).start()
-            time.sleep(1.5)
-            self.status_callback("Monitoring Active")
+            is_file = isinstance(self.video_source, str)
+            video_ended = False
+            out_writer = None
+            output_path = None
+            if is_file:
+                print(f"[INFO] Opening video file: {self.video_source}")
+                self.status_callback("Loading Video File...")
+                vs = cv2.VideoCapture(self.video_source)
+                if not vs.isOpened():
+                    print("[ERROR] Failed to open video file.")
+                    self.status_callback("Error: Cannot Open File")
+                    self.running = False
+                    continue
+                # Set up output video writer
+                os.makedirs("output", exist_ok=True)
+                in_fps = vs.get(cv2.CAP_PROP_FPS) or 25.0
+                in_w = int(vs.get(cv2.CAP_PROP_FRAME_WIDTH))
+                in_h = int(vs.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                base_name = os.path.splitext(os.path.basename(self.video_source))[0]
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_path = os.path.join("output", f"{base_name}_output_{timestamp}.mp4")
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                out_writer = cv2.VideoWriter(output_path, fourcc, in_fps, (in_w, in_h))
+                print(f"[INFO] Output video will be saved to: {output_path}")
+                self.status_callback("Playing Video File")
+            else:
+                print("[INFO] Starting VideoStream capture...")
+                self.status_callback("Connecting Camera...")
+                vs = VideoStream(src=0).start()
+                time.sleep(1.5)
+                self.status_callback("Monitoring Active")
             
             frame_count = 0
             start_time = time.time()
@@ -271,9 +302,18 @@ class VideoWorker(threading.Thread):
                 except queue.Empty:
                     pass
 
-                frame = vs.read()
-                if frame is None:
-                    continue
+                if is_file:
+                    ret, frame = vs.read()
+                    if not ret or frame is None:
+                        print("[INFO] Video file playback complete.")
+                        self.status_callback("Video Ended")
+                        video_ended = True
+                        self.running = False
+                        break
+                else:
+                    frame = vs.read()
+                    if frame is None:
+                        continue
                 
                 h_frame, w_frame, _ = frame.shape
                 
@@ -542,9 +582,21 @@ class VideoWorker(threading.Thread):
                         pass
                 self.frame_queue.put((pil_img, stats))
                 
+                # Write processed frame to output video (video file mode only)
+                if out_writer is not None:
+                    out_writer.write(frame)
+                
             print("[INFO] VideoStream stopping...")
-            vs.stop()
-            self.status_callback("System Idle")
+            if out_writer is not None:
+                out_writer.release()
+                print(f"[INFO] Output video saved: {output_path}")
+                self.log_queue.put((f"[OUTPUT] Video saved: {output_path}", False))
+            if is_file:
+                vs.release()
+            else:
+                vs.stop()
+            if not video_ended:
+                self.status_callback("System Idle")
 
 class SmartMonitoringApp(ctk.CTk):
     def __init__(self):
@@ -558,6 +610,8 @@ class SmartMonitoringApp(ctk.CTk):
         self.frame_queue = queue.Queue(maxsize=2)
         self.log_queue = queue.Queue()
         self.latest_raw_frame = None
+        self.video_source_mode = "Camera"  # "Camera" or "Video File"
+        self.selected_video_path = None
         
         # Create Layout Grid
         self.grid_rowconfigure(0, weight=1)
@@ -566,7 +620,7 @@ class SmartMonitoringApp(ctk.CTk):
         # Sidebar Frame (Left)
         self.sidebar_frame = ctk.CTkFrame(self, width=280, corner_radius=0)
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
-        self.sidebar_frame.grid_rowconfigure(10, weight=1)
+        self.sidebar_frame.grid_rowconfigure(23, weight=1)
         
         # Sidebar title
         self.title_label = ctk.CTkLabel(
@@ -620,30 +674,66 @@ class SmartMonitoringApp(ctk.CTk):
         self.btn_stop.grid(row=5, column=0, padx=20, pady=10, sticky="ew")
         self.btn_stop.configure(state="disabled")
         
+        # --- Video Source Selection ---
+        self.source_header = ctk.CTkLabel(
+            self.sidebar_frame, 
+            text="Video Source", 
+            font=ctk.CTkFont(size=14, weight="bold")
+        )
+        self.source_header.grid(row=6, column=0, padx=20, pady=(15, 5), sticky="w")
+        
+        self.source_toggle = ctk.CTkSegmentedButton(
+            self.sidebar_frame,
+            values=["Camera", "Video File"],
+            command=self.on_source_change,
+            font=ctk.CTkFont(size=12)
+        )
+        self.source_toggle.set("Camera")
+        self.source_toggle.grid(row=7, column=0, padx=20, pady=5, sticky="ew")
+        
+        self.btn_browse_video = ctk.CTkButton(
+            self.sidebar_frame,
+            text="\U0001f4c2 Browse Video...",
+            fg_color="#8e44ad",
+            hover_color="#7d3c98",
+            font=ctk.CTkFont(size=12),
+            command=self.browse_video_file
+        )
+        # Hidden by default (Camera mode)
+        
+        self.source_path_label = ctk.CTkLabel(
+            self.sidebar_frame,
+            text="No file selected",
+            font=ctk.CTkFont(size=10),
+            text_color="#95a5a6",
+            wraplength=240
+        )
+        # Hidden by default (Camera mode)
+        
         # YOLO Sliders Label
         self.sliders_label = ctk.CTkLabel(self.sidebar_frame, text="AI Sensitivity Settings", font=ctk.CTkFont(size=14, weight="bold"))
-        self.sliders_label.grid(row=6, column=0, padx=20, pady=(20, 5), sticky="w")
+        self.sliders_label.grid(row=10, column=0, padx=20, pady=(20, 5), sticky="w")
         
         # YOLO Conf Slider
         self.conf_lbl = ctk.CTkLabel(self.sidebar_frame, text="YOLO BBox Confidence: 0.25", font=ctk.CTkFont(size=11))
-        self.conf_lbl.grid(row=7, column=0, padx=20, pady=(5, 0), sticky="w")
+        self.conf_lbl.grid(row=11, column=0, padx=20, pady=(5, 0), sticky="w")
         self.conf_slider = ctk.CTkSlider(self.sidebar_frame, from_=0.05, to=0.95, number_of_steps=18, command=self.on_conf_change)
-        self.conf_slider.grid(row=8, column=0, padx=20, pady=(0, 15), sticky="ew")
+        self.conf_slider.grid(row=12, column=0, padx=20, pady=(0, 15), sticky="ew")
         self.conf_slider.set(0.25)
         
         # Face Similarity threshold slider
         self.dist_lbl = ctk.CTkLabel(self.sidebar_frame, text="Face Similarity Thresh: 0.45", font=ctk.CTkFont(size=11))
-        self.dist_lbl.grid(row=9, column=0, padx=20, pady=(5, 0), sticky="w")
+        self.dist_lbl.grid(row=13, column=0, padx=20, pady=(5, 0), sticky="w")
         self.dist_slider = ctk.CTkSlider(self.sidebar_frame, from_=0.1, to=0.8, number_of_steps=14, command=self.on_dist_change)
-        self.dist_slider.grid(row=10, column=0, padx=20, pady=(0, 20), sticky="ew")
+        self.dist_slider.grid(row=14, column=0, padx=20, pady=(0, 20), sticky="ew")
         self.dist_slider.set(0.45)
         
         # Detection Target checkboxes
         self.targets_lbl = ctk.CTkLabel(self.sidebar_frame, text="Classes to Track", font=ctk.CTkFont(size=13, weight="bold"))
-        self.targets_lbl.grid(row=11, column=0, padx=20, pady=(10, 5), sticky="w")
+        self.targets_lbl.grid(row=15, column=0, padx=20, pady=(10, 5), sticky="w")
         
         self.checkbox_vars = {}
-        row_idx = 12
+        row_idx = 16
         for cls_name in CLASS_MAPPING.keys():
             var = tk.BooleanVar(value=True)
             chk = ctk.CTkCheckBox(
@@ -664,7 +754,7 @@ class SmartMonitoringApp(ctk.CTk):
             font=ctk.CTkFont(size=10), 
             text_color="#7f8c8d"
         )
-        self.brand_label.grid(row=20, column=0, padx=20, pady=20)
+        self.brand_label.grid(row=24, column=0, padx=20, pady=20)
         
         # Main Display Frame (Right Side)
         self.main_container = ctk.CTkFrame(self, corner_radius=10)
@@ -947,27 +1037,46 @@ class SmartMonitoringApp(ctk.CTk):
     def update_status(self, text):
         """Callback passed to VideoWorker to print status changes in the sidebar"""
         self.status_label.configure(text=text)
-        if text == "Monitoring Active":
+        if text in ("Monitoring Active", "Playing Video File"):
             self.status_label.configure(text_color="#2ecc71")
-        elif text == "Connecting Camera...":
+        elif text in ("Connecting Camera...", "Loading Video File..."):
             self.status_label.configure(text_color="#f1c40f")
+        elif text == "Video Ended":
+            self.status_label.configure(text_color="#f39c12")
+            # Reset buttons when video finishes naturally
+            self.btn_start.configure(state="normal")
+            self.btn_stop.configure(state="disabled")
+        elif text.startswith("Error:"):
+            self.status_label.configure(text_color="#e74c3c")
+            self.btn_start.configure(state="normal")
+            self.btn_stop.configure(state="disabled")
         else:
             self.status_label.configure(text_color="#7f8c8d")
 
     def start_camera_stream(self):
         if hasattr(self, 'video_worker'):
+            # Set the video source based on user selection
+            if self.video_source_mode == "Video File":
+                if not self.selected_video_path:
+                    self.status_label.configure(text="Select a video file first", text_color="#e74c3c")
+                    return
+                self.video_worker.set_source(self.selected_video_path)
+                source_desc = os.path.basename(self.selected_video_path)
+            else:
+                self.video_worker.set_source(0)
+                source_desc = "Webcam"
             self.video_worker.start_stream()
             self.btn_start.configure(state="disabled")
             self.btn_stop.configure(state="normal")
-            self.log_internal_event("[SYSTEM] Starting video feed monitoring...")
+            self.log_internal_event(f"[SYSTEM] Starting monitoring from: {source_desc}")
 
     def stop_camera_stream(self):
         if hasattr(self, 'video_worker'):
             self.video_worker.stop_stream()
             self.btn_start.configure(state="normal")
             self.btn_stop.configure(state="disabled")
-            self.video_label.configure(image=None, text="Camera Stream Off\nClick 'Start Camera Feed' to begin.")
-            self.log_internal_event("[SYSTEM] Camera feed monitoring stopped.")
+            self.video_label.configure(image=None, text="Stream Off\nSelect a source and click 'Start' to begin.")
+            self.log_internal_event("[SYSTEM] Monitoring stopped.")
             
             # Hide face rec progress bar if visible
             if self.face_rec_bar_visible:
@@ -980,6 +1089,39 @@ class SmartMonitoringApp(ctk.CTk):
             self.metric_total.configure(text="People Tracked: 0")
             self.metric_known.configure(text="Known Identity: 0")
             self.metric_unknown.configure(text="Unknown/Unverified: 0")
+
+    def on_source_change(self, value):
+        """Handle video source toggle between Camera and Video File."""
+        self.video_source_mode = value
+        if value == "Video File":
+            self.btn_browse_video.grid(row=8, column=0, padx=20, pady=(5, 0), sticky="ew")
+            self.source_path_label.grid(row=9, column=0, padx=20, pady=(2, 10), sticky="w")
+            self.btn_start.configure(text="Start Video Feed")
+            self.btn_stop.configure(text="Stop Video Feed")
+        else:
+            self.btn_browse_video.grid_remove()
+            self.source_path_label.grid_remove()
+            self.selected_video_path = None
+            self.source_path_label.configure(text="No file selected")
+            self.btn_start.configure(text="Start Camera Feed")
+            self.btn_stop.configure(text="Stop Camera Feed")
+
+    def browse_video_file(self):
+        """Open file dialog to select a video file."""
+        file_path = filedialog.askopenfilename(
+            title="Select Video File",
+            filetypes=[
+                ("Video Files", "*.mp4 *.avi *.mkv *.mov *.wmv *.flv"),
+                ("MP4 Files", "*.mp4"),
+                ("AVI Files", "*.avi"),
+                ("All Files", "*.*")
+            ]
+        )
+        if file_path:
+            self.selected_video_path = file_path
+            filename = os.path.basename(file_path)
+            self.source_path_label.configure(text=f"\U0001f4ce {filename}", text_color="#2ecc71")
+            self.log_internal_event(f"[SYSTEM] Video file selected: {filename}")
 
     def on_conf_change(self, val):
         self.conf_lbl.configure(text=f"YOLO BBox Confidence: {val:.2f}")
