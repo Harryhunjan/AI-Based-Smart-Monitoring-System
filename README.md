@@ -329,3 +329,9 @@ Background Threads:
 - [ ] ByteTrack ID reassignment deduplication
 - [ ] Alert sound notifications for abandoned objects
 - [ ] Export analytics reports to PDF
+
+---
+
+## License
+
+This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).
