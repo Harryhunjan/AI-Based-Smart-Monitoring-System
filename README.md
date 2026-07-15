@@ -5,7 +5,7 @@
 ![InsightFace](https://img.shields.io/badge/InsightFace-ArcFace-orange.svg)
 ![OpenCV](https://img.shields.io/badge/OpenCV-4.x-green.svg)
 ![CustomTkinter](https://img.shields.io/badge/CustomTkinter-GUI-purple.svg)
-
+![License](https://img.shields.io/badge/License-MIT-lightgrey.svg)
 
 A real-time AI surveillance system with a full desktop GUI dashboard. Detects and tracks people via webcam or video file, identifies known faces using ArcFace embeddings, links personal belongings to their owners, and fires alerts when an item is left unattended. All events are logged to a queryable CSV file with timestamps and can be visualized in an embedded analytics panel.
 
@@ -329,9 +329,3 @@ Background Threads:
 - [ ] ByteTrack ID reassignment deduplication
 - [ ] Alert sound notifications for abandoned objects
 - [ ] Export analytics reports to PDF
-
----
-
-## License
-
-This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).

@@ -408,9 +408,8 @@ class VideoWorker(threading.Thread):
                             
                             # Render Frame Box with Photo Count and Carrying list
                             name = self.tracked_persons[track_id]["name"]
-                            photo_count = self.tracked_persons[track_id].get("photo_count", 0)
                             if name != "Unknown":
-                                name_display = f"{name} ({photo_count} photos)"
+                                name_display = name
                             else:
                                 name_display = name
                                 
@@ -421,11 +420,12 @@ class VideoWorker(threading.Thread):
                                 label = f"ID: {track_id} | {name_display}"
                                 
                             color = (0, 0, 255) if name == "Unknown" else (0, 255, 0)
+                            text_color = (255, 255, 255) if name == "Unknown" else (0, 0, 0)
                             
                             cv2.rectangle(frame, (startX, startY), (endX, endY), color, 2)
-                            (text_w, text_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+                            (text_w, text_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
                             cv2.rectangle(frame, (startX, max(0, startY - text_h - 8)), (startX + text_w + 10, startY), color, -1)
-                            cv2.putText(frame, label, (startX + 5, startY - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                            cv2.putText(frame, label, (startX + 5, startY - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, text_color, 2)
                             
                     # 2. Process Objects
                     for box, track_id, cls, conf in zip(boxes, track_ids, clss, confs):
