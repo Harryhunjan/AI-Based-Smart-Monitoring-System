@@ -51,6 +51,7 @@ A real-time AI surveillance system with a full desktop GUI dashboard. Detects an
 ```
 .
 ├── smart_monitoring_gui.py         # Main GUI application (CustomTkinter dashboard)
+├── live_monitoring_pipeline.py     # Source-independent CLI pipeline for phone, RTSP, USB, and file input
 ├── real_time_object_detection.py   # Standalone CLI loop — detection, tracking, rendering
 ├── face_recognizer.py              # InsightFace / ArcFace recognition pipeline
 ├── logger.py                       # Event logger (CSV append)
@@ -195,13 +196,76 @@ Use the sidebar to:
 - Adjust YOLO detection confidence and face similarity thresholds in real-time
 - Enable/disable specific object classes to track
 
+### Live monitoring pipeline (dual display)
+
+Use `live_monitoring_pipeline.py` for the source-independent real-time pipeline. It keeps the TV/external monitor output clean while the laptop shows dashboard metrics and terminal logs.
+
+Supported source types:
+
+| Source type | Required options | Example |
+|---|---|---|
+| `phone` | `--url` | Phone IP Webcam HTTP stream |
+| `rtsp` | `--url` | Wireless CCTV/IP camera RTSP stream |
+| `usb` | `--camera-index` | Built-in or USB webcam |
+| `file` | `--file-path` | Video file testing |
+
+Phone IP Webcam:
+
+```bash
+python live_monitoring_pipeline.py --source-type phone --url http://192.168.1.5:8080 --fullscreen
+```
+
+RTSP CCTV/IP camera:
+
+```bash
+python live_monitoring_pipeline.py --source-type rtsp --url rtsp://user:pass@192.168.1.20:554/stream1 --fullscreen
+```
+
+USB webcam:
+
+```bash
+python live_monitoring_pipeline.py --source-type usb --camera-index 0 --fullscreen
+```
+
+Video file test:
+
+```bash
+python live_monitoring_pipeline.py --source-type file --file-path sample.mp4
+```
+
+Useful options:
+
+```bash
+python live_monitoring_pipeline.py --source-type phone --url http://192.168.1.5:8080 --conf 0.4 --detect-every 3 --no-face
+```
+
+Controls:
+- Press `q` or `Esc` to exit.
+- Press `f` to force the clean live output window into fullscreen.
+- Connect the laptop to a monitor or TV using HDMI, then move/fullscreen the clean output window on that display. The separate dashboard window and terminal status output are intended for the laptop screen.
+- Add `--no-dashboard-window` if you only want terminal logs on the laptop.
+
+Architecture layers:
+- **Camera Source Layer**: normalizes phone HTTP, RTSP, USB index, and file inputs into `cv2.VideoCapture`.
+- **AI Processing Layer**: YOLO tracking, optional `face_recognizer.py` identity matching, person/object state, and alert events.
+- **Display Output Layer**: clean processed TV feed with bounding boxes, names, object labels, and a minimal alert banner.
+- **Dashboard / Logs Layer**: FPS, connection status, counts, recent alerts, CSV event logs, and terminal status updates.
+
 ### Standalone CLI (legacy)
 
 ```bash
 python real_time_object_detection.py
 ```
 
-Opens a webcam feed with an OpenCV overlay dashboard. Press `q` to exit. Does not include GUI controls, face registration, or embedded analytics.
+Opens a webcam feed with an OpenCV overlay dashboard. Press `q` to exit. Does not include the source-independent camera layer.
+
+### Phone IP Webcam demo (legacy)
+
+```bash
+python ip_webcam_pipeline.py --url http://192.168.1.5:8080 --fullscreen
+```
+
+This older demo still works for phone-only testing, but new CCTV/USB/file work should use `live_monitoring_pipeline.py`.
 
 ### Standalone analytics
 
